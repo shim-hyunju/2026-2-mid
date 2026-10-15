@@ -558,7 +558,7 @@
       generatedCsvContent = csv;
 
       // ZipCrypto 암호화 ZIP 생성 (비밀번호: 7866)
-      const csvFilename = `${studentCourse}_${studentId}.csv`;
+      const csvFilename = `${studentCourse}_${studentId}_VOCA.csv`;
       encryptedZipBlob = createPasswordProtectedZip(csvFilename, csv, "7866");
 
       // 화면 전환
@@ -622,7 +622,7 @@
       const url = URL.createObjectURL(encryptedZipBlob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `${studentCourse}_${studentId}.zip`;
+      a.download = `${studentCourse}_${studentId}_VOCA.zip`;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
