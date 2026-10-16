@@ -207,10 +207,10 @@
     <div class="bar-info">
       <span class="badge-course" id="bar-course"></span>
       <span>응시자: <strong id="bar-student"></strong></span>
-      <span>이탈 경고: <span class="warning-badge" id="bar-warning">0 / 3</span></span>
+      <span>이탈 경고: <span class="warning-badge" id="bar-warning">0 / 1</span></span>
     </div>
     <div class="bar-timer">
-      ⏱️ <span id="bar-time">40:00</span>
+      ⏱️ <span id="bar-time">45:00</span>
     </div>
   </div>
 
@@ -221,9 +221,10 @@
     <div class="rules">
       <strong>📌 응시 주의사항 및 부정행위 방지 안내</strong><br>
       • 본 시험은 총 30문항(문항당 1점, 만점 30점)으로 구성되어 있습니다.<br>
-      • 시험 시간은 <strong>40분</strong>이며, 시간이 종료되면 자동 제출됩니다.<br>
-      • <strong>부정행위 차단:</strong> 시험 화면을 벗어나거나 다른 창/프로그램을 클릭할 경우 이탈 경고가 기록되며, 3회 초과 시 시험이 즉시 자동 종료됩니다.<br>
+      • 시험 시간은 <strong>45분</strong>이며, 시간이 종료되면 자동 제출됩니다.<br>
+      • <strong>부정행위 차단:</strong> 시험 화면을 벗어나거나 다른 창/프로그램을 클릭할 경우(화면 이탈 1회 감지 시) 시험이 즉시 자동 종료 및 제출됩니다.<br>
       • 마우스 우클릭, 텍스트 복사, 개발자도구 등 단축키는 사용할 수 없습니다.<br>
+      • 동일 학번(ID)으로 재응시하는 경우 결과 파일에 재응시 여부가 자동 기록됩니다.<br>
       • 시험 종료 시 결과 파일은 비밀번호(7866)로 암호화되어 교수님 구글 드라이브로 자동 전송됩니다.
     </div>
 
@@ -287,6 +288,7 @@
       </p>
       <p style="font-size: 20px; font-weight: bold; color: #1e293b;">
         <span id="res-name"></span> (<span id="res-id"></span>) 님의 시험 답안이 정상적으로 제출되었습니다.
+        <span id="res-retest-badge" class="warning-badge hidden" style="margin-left: 8px; vertical-align: middle;"></span>
       </p>
       <p style="color: #64748b; margin-top: 10px; font-size: 15px;">
         ※ 공정한 평가를 위해 시험 점수와 세부 정답은 공개되지 않습니다.
@@ -315,10 +317,13 @@
 
     let selectedQuestions = [];
     let timerInterval = null;
-    let timeLeft = 45 * 60; // 45분
+    let timeLeft = 45 * 60; // 45분 (2700초)
     let blurCount = 0;
     const MAX_BLUR_COUNT = 1;
     let examSubmitted = false;
+
+    let isRetest = false;
+    let attemptCount = 1;
 
     let studentCourse = "";
     let studentId = "";
@@ -326,6 +331,7 @@
     let selectedLang = "";
     let generatedCsvContent = "";
     let encryptedZipBlob = null;
+    let finalZipFileName = "";
 
     // 복사, 붙여넣기, 우클릭, 개발자도구 방지
     document.addEventListener('contextmenu', e => e.preventDefault());
@@ -338,16 +344,14 @@
       }
     });
 
-    // 화면 이탈(치팅 감지)
+    // 화면 이탈(치팅 감지 - 1회 이탈 시 즉시 자동 제출)
     window.addEventListener('blur', () => {
       if (!examSubmitted && !document.getElementById('exam-screen').classList.contains('hidden')) {
         blurCount++;
         document.getElementById('bar-warning').innerText = `${blurCount} / ${MAX_BLUR_COUNT}`;
         if (blurCount >= MAX_BLUR_COUNT) {
-          alert(`[부정행위 경고 초과] 화면 이탈이 ${MAX_BLUR_COUNT}회 감지되어 시험이 자동 제출됩니다.`);
+          alert(`[부정행위 감지] 시험 화면 이탈(1회)이 감지되어 시험이 즉시 자동 제출됩니다.`);
           submitExam(true);
-        } else {
-          alert(`[경고] 시험 창을 벗어났습니다! (이탈 ${blurCount}/${MAX_BLUR_COUNT}회)\n다른 창이나 프로그램을 사용하면 시험이 강제 제출됩니다.`);
         }
       }
     });
@@ -397,6 +401,22 @@
         alert('성명을 입력해 주세요.');
         return;
       }
+
+      // 재응시 여부 확인 (동일한 학번(ID)의 응시/제출 이력 확인)
+      const attemptKey = `exam_attempt_${studentId}`;
+      const submittedKey = `exam_submitted_${studentId}`;
+      const prevAttempts = parseInt(localStorage.getItem(attemptKey) || '0', 10);
+      const wasSubmitted = localStorage.getItem(submittedKey) !== null;
+
+      if (prevAttempts > 0 || wasSubmitted) {
+        isRetest = true;
+        attemptCount = Math.max(prevAttempts + 1, 2);
+      } else {
+        isRetest = false;
+        attemptCount = 1;
+      }
+      localStorage.setItem(attemptKey, attemptCount.toString());
+      localStorage.setItem(`exam_last_time_${studentId}`, new Date().toISOString());
 
       // 전체화면 요청
       if (document.documentElement.requestFullscreen) {
@@ -492,7 +512,7 @@
 
         if (timeLeft <= 0) {
           clearInterval(timerInterval);
-          alert('시험 시간(40분)이 모두 종료되었습니다. 답안이 자동 제출됩니다.');
+          alert('시험 시간(45분)이 모두 종료되었습니다. 답안이 자동 제출됩니다.');
           submitExam(true);
         }
       }, 1000);
@@ -507,6 +527,11 @@
 
       examSubmitted = true;
       clearInterval(timerInterval);
+
+      // 로컬스토리지에 제출 완료 상태 기록
+      try {
+        localStorage.setItem(`exam_submitted_${studentId}`, new Date().toISOString());
+      } catch (e) {}
 
       if (document.exitFullscreen) {
         document.exitFullscreen().catch(() => {});
@@ -539,12 +564,14 @@
       });
 
       const submitTime = new Date().toLocaleString('ko-KR');
+      const retestText = isRetest ? `재응시 (${attemptCount}회차)` : "최초응시";
 
-      // CSV 생성
+      // CSV 생성 (동일 ID 재응시 여부 표기)
       let csv = "\uFEFF";
       csv += `강의명,${studentCourse}\n`;
       csv += `학번,${studentId}\n`;
       csv += `성명,${studentName}\n`;
+      csv += `응시구분,${retestText}\n`;
       csv += `제출일시,${submitTime}\n`;
       csv += `취득점수,${score} / 30\n\n`;
       csv += `문항번호,단어(어휘),유형,학생답안,정답,결과\n`;
@@ -558,7 +585,9 @@
       generatedCsvContent = csv;
 
       // ZipCrypto 암호화 ZIP 생성 (비밀번호: 7866)
-      const csvFilename = `${studentCourse}_${studentId}_VOCA.csv`;
+      const fileSuffix = isRetest ? `_재응시_${attemptCount}회차` : "";
+      const csvFilename = `${studentCourse}_${studentId}${fileSuffix}_VOCA.csv`;
+      finalZipFileName = `${studentCourse}_${studentId}${fileSuffix}_VOCA.zip`;
       encryptedZipBlob = createPasswordProtectedZip(csvFilename, csv, "7866");
 
       // 화면 전환
@@ -569,15 +598,25 @@
       document.getElementById('res-name').innerText = studentName;
       document.getElementById('res-id').innerText = studentId;
 
+      const retestBadge = document.getElementById('res-retest-badge');
+      if (retestBadge) {
+        if (isRetest) {
+          retestBadge.innerText = `재응시 (${attemptCount}회차)`;
+          retestBadge.classList.remove('hidden');
+        } else {
+          retestBadge.classList.add('hidden');
+        }
+      }
+
       // 1) 교수님 구글 드라이브 자동 전송
-      sendResultToGoogleDrive(csv, score, submitTime);
+      sendResultToGoogleDrive(csv, score, submitTime, csvFilename);
 
       // 2) 로컬 백업 ZIP 자동 다운로드
       downloadBackupZip();
     }
 
     // 구글 앱스 스크립트 전송
-    function sendResultToGoogleDrive(csvContent, score, submitTime) {
+    function sendResultToGoogleDrive(csvContent, score, submitTime, csvFilename) {
       const statusBox = document.getElementById('upload-status');
       if (!GOOGLE_APP_SCRIPT_URL) {
         statusBox.innerText = "⚠️ 구글 드라이브 전송 URL이 설정되지 않았습니다.";
@@ -585,10 +624,13 @@
       }
 
       const payload = {
-        fileName: `${studentCourse}_${studentId}.csv`,
+        fileName: csvFilename || `${studentCourse}_${studentId}.csv`,
         course: studentCourse,
         studentId: studentId,
         studentName: studentName,
+        isRetest: isRetest,
+        attemptCount: attemptCount,
+        retestStatus: isRetest ? `재응시 (${attemptCount}회차)` : "최초응시",
         score: score,
         submitTime: submitTime,
         csvContent: csvContent
@@ -622,7 +664,7 @@
       const url = URL.createObjectURL(encryptedZipBlob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `${studentCourse}_${studentId}_VOCA.zip`;
+      a.download = finalZipFileName || `${studentCourse}_${studentId}_VOCA.zip`;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
