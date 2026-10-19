@@ -12,6 +12,8 @@
       color: #1e293b;
       user-select: none;
       -webkit-user-select: none;
+      top: 0px !important;
+      position: static !important;
     }
     .notranslate { translate: no; }
 
@@ -19,7 +21,7 @@
     .floating-bar {
       position: sticky;
       top: 0;
-      z-index: 1000;
+      z-index: 999999;
       background: #ffffff;
       border-bottom: 2px solid #e2e8f0;
       box-shadow: 0 4px 12px rgba(0,0,0,0.06);
@@ -170,9 +172,30 @@
 
     .hidden { display: none !important; }
     
-    #google_translate_element { display: none; }
-    .goog-te-banner-frame { display: none !important; }
-    body { top: 0px !important; }
+    /* Google Translate 상단 배너 프레임 및 여백 완전 제거 */
+    .goog-te-banner-frame,
+    .goog-te-banner-frame.skiptranslate,
+    iframe.goog-te-banner-frame,
+    iframe.skiptranslate,
+    iframe.VIpgJd-ZVi9od-ORHb-OEVmcb,
+    .VIpgJd-ZVi9od-ORHb-OEVmcb,
+    body > .skiptranslate,
+    #goog-gt-tt,
+    .goog-te-balloon-frame {
+      display: none !important;
+      visibility: hidden !important;
+      opacity: 0 !important;
+      width: 0 !important;
+      height: 0 !important;
+      margin: 0 !important;
+      padding: 0 !important;
+      border: none !important;
+      position: absolute !important;
+      top: -9999px !important;
+      left: -9999px !important;
+      pointer-events: none !important;
+    }
+    #google_translate_element { display: none !important; }
 
     .status-box {
       margin-top: 20px;
@@ -315,6 +338,74 @@
     // 교수님 구글 앱스 스크립트 웹 앱 URL
     const GOOGLE_APP_SCRIPT_URL = "https://script.google.com/macros/s/AKfycby-bvOB8ydNG505n4CsRXa7IpTkbZ1uvBj_1JQr1s1DtRNbedoYb0nTmdxt8ZK2Bt21sQ/exec";
 
+    // ==========================================
+    // 1. 구글 번역 쿠키 초기화 및 상단 바 제거 유틸리티
+    // ==========================================
+    function clearGoogleTranslateCookie() {
+      const cookieNames = ['googtrans', 'googtrans_opt'];
+      const host = window.location.hostname;
+      const domainParts = host ? host.split('.') : [];
+      const domains = [host, '.' + host, ''];
+      for (let i = 0; i < domainParts.length - 1; i++) {
+        domains.push('.' + domainParts.slice(i).join('.'));
+      }
+      const paths = ['/', window.location.pathname, ''];
+
+      cookieNames.forEach(name => {
+        domains.forEach(domain => {
+          paths.forEach(path => {
+            let cookieStr = `${name}=; expires=Thu, 01 Jan 1970 00:00:00 UTC;`;
+            if (path) cookieStr += ` path=${path};`;
+            if (domain) cookieStr += ` domain=${domain};`;
+            document.cookie = cookieStr;
+          });
+        });
+      });
+    }
+
+    function resetGoogleTranslateToOriginal() {
+      clearGoogleTranslateCookie();
+      const selectBox = document.querySelector('.goog-te-combo');
+      if (selectBox && selectBox.value) {
+        selectBox.value = '';
+        selectBox.dispatchEvent(new Event('change'));
+      }
+      const langSelect = document.getElementById('lang-select');
+      if (langSelect) langSelect.value = '';
+    }
+
+    // 페이지 접속 즉시 이전 세션의 잔여 번역 쿠키 및 드롭다운 초기화
+    clearGoogleTranslateCookie();
+    window.addEventListener('DOMContentLoaded', () => {
+      const langSelect = document.getElementById('lang-select');
+      if (langSelect) langSelect.value = '';
+    });
+
+    // 브라우저 닫기 / 탭 이탈 / 페이지 새로고침 시 번역 쿠키 및 선택 초기화
+    window.addEventListener('beforeunload', () => {
+      clearGoogleTranslateCookie();
+    });
+    window.addEventListener('pagehide', () => {
+      clearGoogleTranslateCookie();
+    });
+
+    // 구글 번역 상단 바 프레임 렌더링 감지 즉시 강제 은폐 및 body 밀림 복구
+    const googleBannerObserver = new MutationObserver(() => {
+      if (document.body.style.top && document.body.style.top !== '0px') {
+        document.body.style.top = '0px';
+      }
+      const bannerEls = document.querySelectorAll('iframe.goog-te-banner-frame, iframe.VIpgJd-ZVi9od-ORHb-OEVmcb, body > .skiptranslate, .goog-te-banner-frame');
+      bannerEls.forEach(el => {
+        el.style.setProperty('display', 'none', 'important');
+        el.style.setProperty('visibility', 'hidden', 'important');
+        el.style.setProperty('height', '0px', 'important');
+      });
+    });
+    googleBannerObserver.observe(document.documentElement, { attributes: true, childList: true, subtree: true });
+
+    // ==========================================
+    // 2. 시험 변수 및 상태
+    // ==========================================
     let selectedQuestions = [];
     let timerInterval = null;
     let timeLeft = 45 * 60; // 45분 (2700초)
@@ -358,10 +449,15 @@
 
     // 구글 번역 적용 로직
     function applyGoogleTranslation(lang) {
-      if (!lang) return;
-      // 쿠키 설정
+      if (!lang) {
+        resetGoogleTranslateToOriginal();
+        return;
+      }
+      // 세션 쿠키로 설정 (expires/max-age 생략)
       document.cookie = `googtrans=/ko/${lang}; path=/;`;
-      document.cookie = `googtrans=/ko/${lang}; domain=${window.location.hostname}; path=/;`;
+      if (window.location.hostname) {
+        document.cookie = `googtrans=/ko/${lang}; domain=${window.location.hostname}; path=/;`;
+      }
 
       const selectBox = document.querySelector('.goog-te-combo');
       if (selectBox) {
@@ -402,7 +498,7 @@
         return;
       }
 
-      // 재응시 여부 확인 (동일한 학번(ID)의 응시/제출 이력 확인)
+      // 재응시 여부 확인
       const attemptKey = `exam_attempt_${studentId}`;
       const submittedKey = `exam_submitted_${studentId}`;
       const prevAttempts = parseInt(localStorage.getItem(attemptKey) || '0', 10);
@@ -471,6 +567,8 @@
       // 번역 적용
       if (selectedLang) {
         applyGoogleTranslation(selectedLang);
+      } else {
+        resetGoogleTranslateToOriginal();
       }
 
       startTimer();
@@ -528,6 +626,9 @@
       examSubmitted = true;
       clearInterval(timerInterval);
 
+      // 시험 종료 즉시 번역 쿠키 및 설정 완전 초기화 (원문 복원)
+      resetGoogleTranslateToOriginal();
+
       // 로컬스토리지에 제출 완료 상태 기록
       try {
         localStorage.setItem(`exam_submitted_${studentId}`, new Date().toISOString());
@@ -566,20 +667,29 @@
       const submitTime = new Date().toLocaleString('ko-KR');
       const retestText = isRetest ? `재응시 (${attemptCount}회차)` : "최초응시";
 
-      // CSV 생성 (동일 ID 재응시 여부 표기)
-      let csv = "\uFEFF";
-      csv += `강의명,${studentCourse}\n`;
-      csv += `학번,${studentId}\n`;
-      csv += `성명,${studentName}\n`;
-      csv += `응시구분,${retestText}\n`;
-      csv += `제출일시,${submitTime}\n`;
-      csv += `취득점수,${score} / 30\n\n`;
-      csv += `문항번호,단어(어휘),유형,학생답안,정답,결과\n`;
+      // CSV 생성
+      let csv = "﻿";
+      csv += `강의명,${studentCourse}
+`;
+      csv += `학번,${studentId}
+`;
+      csv += `성명,${studentName}
+`;
+      csv += `응시구분,${retestText}
+`;
+      csv += `제출일시,${submitTime}
+`;
+      csv += `취득점수,${score} / 30
+
+`;
+      csv += `문항번호,단어(어휘),유형,학생답안,정답,결과
+`;
 
       reportRows.forEach(r => {
         const safeUser = `"${r.userChoice.replace(/"/g, '""')}"`;
         const safeCorrect = `"${r.correctAnswer.replace(/"/g, '""')}"`;
-        csv += `${r.num},${r.word},${r.kind},${safeUser},${safeCorrect},${r.result}\n`;
+        csv += `${r.num},${r.word},${r.kind},${safeUser},${safeCorrect},${r.result}
+`;
       });
 
       generatedCsvContent = csv;
